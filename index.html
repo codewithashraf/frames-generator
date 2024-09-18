@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video to Frames Converter</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 450px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 26px;
+      color: #007bff;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .input-group label {
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .input-group input,
+    .input-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 15px;
+      font-size: 14px;
+      margin-bottom: 10px;
+      transition: border-color 0.3s ease;
+    }
+
+    .input-group input:focus,
+    .input-group select:focus {
+      border-color: #007bff;
+      outline: none;
+      box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background-color 0.3s ease;
+    }
+
+    .btn:hover {
+      background-color: #000000;
+    }
+
+    .btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .progress {
+      margin-top: 20px;
+      height: 12px;
+      border-radius: 10px;
+      overflow: hidden;
+      background-color: #e9ecef;
+      margin-bottom: 20px;
+    }
+
+    .progress-bar {
+      background-color: #007bff;
+      height: 100%;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    .result {
+      display: none;
+    }
+
+    .result button {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 10px;
+      background-color: #000000;
+      color: rgb(255, 255, 255);
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      margin-top: 5px;
+    }
+
+    .result button:hover {
+      background-color: #007bff;
+      color: white;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Convert Video to Frames</h1>
+
+    <div class="input-group">
+      <label for="videoUpload">Upload Video (max 5 minutes):</label>
+      <input type="file" id="videoUpload" class="form-control" accept="video/*" />
+    </div>
+
+    <div class="input-group">
+      <label for="fps">Frames per second:</label>
+      <input type="number" id="fps" class="form-control" placeholder="Enter FPS (default is 1)" />
+    </div>
+
+    <div class="input-group">
+      <label for="format">Choose Image Format:</label>
+      <select id="format" class="form-select">
+        <option value="jpeg">JPEG</option>
+        <option value="webp">WEBP</option>
+      </select>
+    </div>
+
+    <div class="input-group">
+      <label for="quality">Choose Image Quality (20 to 100):</label>
+      <input type="range" id="quality" class="form-range" min="20" max="100" value="80" />
+      <div class="d-flex justify-content-between">
+        <span></span>
+        <span id="qualityValue">80%</span>
+        <span></span>
+      </div>
+    </div>
+
+    <button id="generateFrames" class="btn" disabled>Generate Frames</button>
+
+    <div class="progress mt-3 d-none" id="progress">
+      <div class="progress-bar" role="progressbar" id="progressBar"></div>
+    </div>
+
+    <div class="result" id="result">
+      <button id="downloadZip" class="btn">Download Zip</button>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const videoUpload = document.getElementById('videoUpload');
+    const generateFrames = document.getElementById('generateFrames');
+    const result = document.getElementById('result');
+    const qualityInput = document.getElementById('quality');
+    const qualityValue = document.getElementById('qualityValue');
+    const progressBar = document.getElementById('progressBar');
+    const progress = document.getElementById('progress');
+    const downloadZip = document.getElementById('downloadZip');
+
+    let zipBlob;
+
+    qualityInput.addEventListener('input', () => {
+      qualityValue.textContent = qualityInput.value + '%';
+    });
+
+    videoUpload.addEventListener('change', () => {
+      if (videoUpload.files.length > 0) {
+        const videoFile = videoUpload.files[0];
+        getVideoDuration(videoFile).then(duration => {
+          if (duration > 300) {
+            alert('The video is longer than 5 minutes. Please upload a shorter video.');
+            videoUpload.value = '';
+            generateFrames.disabled = true;
+          } else {
+            generateFrames.disabled = false;
+          }
+        });
+      }
+    });
+
+    // generateFrames.addEventListener('click', async () => {
+    //   const fps = document.getElementById('fps').value || 1;
+    //   const format = document.getElementById('format').value;
+    //   const quality = qualityInput.value / 100;
+    //   const videoFile = videoUpload.files[0];
+
+    //   progress.classList.remove('d-none');
+    //   result.style.display = 'none';
+
+    //   const videoElement = document.createElement('video');
+    //   videoElement.src = URL.createObjectURL(videoFile);
+    //   await new Promise(resolve => videoElement.onloadedmetadata = resolve);
+
+    //   const duration = videoElement.duration;
+    //   const frameInterval = 1 / fps;
+    //   const zip = new JSZip();
+    //   let processedFrames = 0;
+    //   const totalFrames = Math.ceil(duration * fps);  // Total frame count based on FPS
+
+    //   for (let frame = 0; frame < totalFrames; frame++) {
+    //     const time = frame / fps;
+    //     videoElement.currentTime = time;
+
+    //     await new Promise(resolve => videoElement.onseeked = resolve);
+
+    //     const canvas = document.createElement('canvas');
+    //     canvas.width = videoElement.videoWidth;
+    //     canvas.height = videoElement.videoHeight;
+    //     const ctx = canvas.getContext('2d');
+    //     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+    //     let blob;
+    //     if (format === 'jpeg') {
+    //       blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    //     } else if (format === 'webp') {
+    //       blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', quality));
+    //     }
+
+    //     zip.file(`frame_${frame + 1}.${format}`, blob);
+
+    //     processedFrames++;
+    //     progressBar.style.width = `${(processedFrames / totalFrames) * 100}%`;
+    //   }
+
+    //   zipBlob = await zip.generateAsync({ type: 'blob' });
+
+    //   progress.classList.add('d-none');
+    //   result.style.display = 'block';
+    // });
+
+    generateFrames.addEventListener('click', async () => {
+  const fps = document.getElementById('fps').value || 1;
+  const format = document.getElementById('format').value;
+  const quality = qualityInput.value / 100;  // Quality value between 0 and 1
+  const videoFile = videoUpload.files[0];
+
+  progress.classList.remove('d-none');
+  result.style.display = 'none';
+
+  const videoElement = document.createElement('video');
+  videoElement.src = URL.createObjectURL(videoFile);
+  await new Promise(resolve => videoElement.onloadedmetadata = resolve);
+
+  const duration = videoElement.duration;
+  const frameInterval = 1 / fps;
+  const zip = new JSZip();
+  let processedFrames = 0;
+  const totalFrames = Math.ceil(duration * fps);
+
+  for (let frame = 0; frame < totalFrames; frame++) {
+    const time = frame / fps;
+    videoElement.currentTime = time;
+
+    await new Promise(resolve => videoElement.onseeked = resolve);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+    let blob;
+    
+    if (format === 'jpeg') {
+      // Intelligent compression for JPEG based on quality input
+      const adjustedQuality = quality < 0.5 ? quality * 0.8 : quality;  // Higher compression at lower quality
+      blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', adjustedQuality));
+    } else if (format === 'webp') {
+      // Intelligent compression for WebP based on quality input
+      const adjustedQuality = quality < 0.5 ? quality * 0.75 : quality;  // Even stronger compression at lower quality
+      blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', adjustedQuality));
+    }
+
+    zip.file(`frame_${frame + 1}.${format}`, blob);
+
+    processedFrames++;
+    progressBar.style.width = `${(processedFrames / totalFrames) * 100}%`;
+  }
+
+  zipBlob = await zip.generateAsync({ type: 'blob' });
+
+  progress.classList.add('d-none');
+  result.style.display = 'block';
+});
+
+
+    downloadZip.addEventListener('click', () => {
+      if (zipBlob) {
+        saveAs(zipBlob, 'frames.zip');
+      }
+    });
+
+    function getVideoDuration(videoFile) {
+      const videoElement = document.createElement('video');
+      videoElement.src = URL.createObjectURL(videoFile);
+      return new Promise((resolve) => {
+        videoElement.onloadedmetadata = () => {
+          resolve(videoElement.duration);
+        };
+      });
+    }
+  </script>
+</body>
+</html>
